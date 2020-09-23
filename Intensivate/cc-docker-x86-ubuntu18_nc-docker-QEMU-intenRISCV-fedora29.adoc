@@ -1,0 +1,212 @@
+# Preping RISCV Fedora Docker image
+
+#### 1. Pull an Intensivate image:
+
+[source,sh]
+-----
+docker pull intensivate/riscv-opensource:public_baseimage
+----- 
+
+#### 2. Start an AsterixDB Node Controller (worker) on IntenRISCV
+
+Create docker network "adb-net".
+
+[source,sh]
+----
+docker network create adb-net
+----
+
+SSH to server host, then run a new container:
+
+[source,sh]
+----
+docker run -dit \
+--name inten-adb-nc1 \
+--network adb-net \
+-p 7722:22 \
+-p 10000:10000 \
+-v /tmp:/tmp \
+intensivate/riscv-opensource:public_baseimage \
+/bin/bash
+
+docker exec -it inten-adb-nc1 bash
+service ssh start
+passwd intenuser
+exit
+htop
+----
+
+SSH into container; run htop:
+
+[source,sh]
+----
+ssh -p 7722 intenuser@superman
+sudo apt update
+sudo apt install htop nano
+htop
+----
+
+SSH again into container; add port mapping to riscv-fedora and run
+
+[source,sh]
+----
+ssh -p 7722 intenuser@superman
+cd ~/i-firesim
+
+nano sw/firesim-software/wlutil/launch.py
+    # append the following to the -netdev parameter:
+    ,hostfwd=tcp::9091-:9091,hostfwd=tcp::19004-:19004,hostfwd=tcp::35003-:35003,hostfwd=tcp::35004-:35004,hostfwd=tcp::35005-:35005,hostfwd=tcp::35006-:35006
+
+##ignore errors on this command
+source sourceme-f1-full.sh
+
+cd sw/firesim-software/
+./marshal -v launch workloads/fedora-base.json
+----
+
+SSH into fedora-riscv; run htop
+[source,sh]
+----
+ssh -p 10000 root@superman
+htop
+----
+
+SSH again into fedora-riscv; setup and run asterixdb ncservice; 
+
+[source,sh]
+----
+ssh -p 10000 root@superman
+cd ~
+mkdir asterix
+cd asterix
+
+wget http://apache.mirrors.hoobly.com/asterixdb/asterixdb-0.9.5/asterix-server-0.9.5-binary-assembly.zip
+
+unzip asterix-server-0.9.5-binary-assembly.zip
+cd apache-asterixdb-0.9.5
+
+echo "[ncservice]
+port=9091" >> nc.conf
+
+bin/asterixncservice -config-file nc.conf > nc-service.log 2>&1 &
+touch logs/nc-asterix_nc1.log
+tail -f logs/nc-asterix_nc1.log
+
+## jps doesn't work on fedora-riscv; so use ps
+ps -ef | grep NCService
+# kill pid to stop
+----
+
+SSH into host; run new ubuntu container; install jdk; run htop
+
+[source,sh]
+----
+docker run -dit \
+--name x86-adb-cc \
+--network adb-net \
+-p 7723:22 \
+-p 19001:19001 \
+-v /tmp:/tmp ubuntu 
+
+docker exec -it x86-adb-cc /bin/bash
+apt update
+apt install htop default-jdk ssh unzip nano inetutils-ping, iproute2, gnupg2, sudo, net-tools, software-properties-common
+
+# vanilla OpenJDK install
+apt install default-jdk
+
+# OpenJ9 Install
+wget -qO - https://adoptopenjdk.jfrog.io/adoptopenjdk/api/gpg/key/public | apt-key add -
+add-apt-repository --yes https://adoptopenjdk.jfrog.io/adoptopenjdk/deb/
+apt install adoptopenjdk-11-openj9 adoptopenjdk-11-openj9-jre
+
+useradd -m intenuser
+passwd intenuser
+service ssh start
+htop
+----
+
+SSH into cc container; configure and run asterixdb cc
+[source,sh]
+----
+ssh -p 7723 intenuser@host
+bash
+
+cd ~
+mkdir asterix
+cd asterix
+wget http://apache.mirrors.hoobly.com/asterixdb/asterixdb-0.9.5/asterix-server-0.9.5-binary-assembly.zip
+
+unzip asterix-server-0.9.5-binary-assembly.zip
+cd apache-asterixdb-0.9.5
+
+## create the following cc.conf file.  
+## <begin cc.conf>:
+
+[nc/asterix_nc1]
+ncservice.port=9091
+txn.log.dir=target/tmp/asterix_nc1/txnlog
+core.dump.dir=target/tmp/asterix_nc1/coredump
+
+# 32 worker threads
+#iodevices=asterix_nc1/t32/iodevice01,asterix_nc1/t32/iodevice02,asterix_nc1/t32/iodevice03,asterix_nc1/t32/iodevice04,asterix_nc1/t32/iodevice05,asterix_nc1/t32/iodevice06,asterix_nc1/t32/iodevice07,asterix_nc1/t32/iodevice08,asterix_nc1/t32/iodevice09,asterix_nc1/t32/iodevice10,asterix_nc1/t32/iodevice11,asterix_nc1/t32/iodevice12,asterix_nc1/t32/iodevice13,asterix_nc1/t32/iodevice14,asterix_nc1/t32/iodevice15,asterix_nc1/t32/iodevice16,asterix_nc1/t32/iodevice17,asterix_nc1/t32/iodevice18,asterix_nc1/t32/iodevice19,asterix_nc1/t32/iodevice20,asterix_nc1/t32/iodevice21,asterix_nc1/t32/iodevice22,asterix_nc1/t32/iodevice23,asterix_nc1/t32/iodevice24,asterix_nc1/t32/iodevice25,asterix_nc1/t32/iodevice26,asterix_nc1/t32/iodevice27,asterix_nc1/t32/iodevice28,asterix_nc1/t32/iodevice29,asterix_nc1/t32/iodevice30,asterix_nc1/t32/iodevice31,asterix_nc1/t32/iodevice32
+
+# 8 worker threads
+#iodevices=asterix_nc1/t08/iodevice01,asterix_nc1/t08/iodevice02,asterix_nc1/t08/iodevice03,asterix_nc1/t08/iodevice04,asterix_nc1/t08/iodevice05,asterix_nc1/t08/iodevice06,asterix_nc1/t08/iodevice07,asterix_nc1/t08/iodevice08
+
+# 2 worker threads
+iodevices=asterix_nc1/t02/iodevice01,asterix_nc1/t02/iodevice02
+
+nc.api.port=19004
+
+#jvm.args=-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5006
+jvm.args=-Xmx4096m -Dnode.Resolver="org.apache.asterix.external.util.IdentitiyResolverFactory" 
+# -Djava.rmi.server.hostname=inten-adb-nc1
+
+address=0.0.0.0
+public.address=inten-adb-nc1
+cluster.address=x86-adb-cc
+cluster.listen.port=35003
+data.listen.port=35004
+messaging.listen.port=35005
+result.listen.port=35006
+
+
+[nc]
+command=asterixnc
+app.class=org.apache.asterix.hyracks.bootstrap.NCApplication
+storage.buffercache.pagesize=32KB
+storage.buffercache.size=128MB
+storage.memorycomponent.globalbudget=512MB
+#storage.io.scheduler=greedy
+#storage.filtered.memorycomponent.max.size=16MB
+
+[cc]
+app.class=org.apache.asterix.hyracks.bootstrap.CCApplication
+heartbeat.period=2000
+heartbeat.max.misses=25
+address=x86-adb-cc
+
+[common]
+log.dir = logs/
+log.level = INFO
+compiler.framesize=32KB
+compiler.sortmemory=320KB
+compiler.groupmemory=160KB
+compiler.joinmemory=256KB
+compiler.textsearchmemory=160KB
+#compiler.windowmemory=192KB
+#compiler.sort.parallel=false
+messaging.frame.size=4096
+messaging.frame.count=512
+metadata.callback.port=35001
+metadata.listen.port=35002
+
+### <end cc.conf>
+
+
+bin/asterixcc -config-file cc.conf > cc.log 2>&1 &
+jps
+# kill pid to stop
+
+tail -f /logs/cc.log
