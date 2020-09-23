@@ -1,4 +1,4 @@
-# Preping RISCV Fedora Docker image
+# Prepping RISCV Fedora Docker Container for AsterixDB NC (worker)
 
 #### 1. Pull an Intensivate image:
 
@@ -76,6 +76,16 @@ SSH again into fedora-riscv; setup and run asterixdb ncservice;
 [source,sh]
 ----
 ssh -p 10000 root@superman
+
+# optional: remove OpenJ9, rip and replace method
+dnf remove java-1.8.0-openjdk-headless-1.8.0.181.b15-1.1.riscv64.fc29.riscv64
+mv /usr/local/java /usr/local/java.old
+dnf install java-11-openjdk
+export JAVA_HOME=/usr/local/java
+export PATH=$JAVA_HOME/bin:$PATH
+ln -s /usr/lib/jvm/java-11-openjdk-11.0.0.28-1.2.riscv64.fc29.riscv64/ /usr/local/java
+java --version
+
 cd ~
 mkdir asterix
 cd asterix
@@ -96,6 +106,8 @@ tail -f logs/nc-asterix_nc1.log
 ps -ef | grep NCService
 # kill pid to stop
 ----
+
+# Prepping the x86 Ubuntu Docker Container for AsterixDB CC (controller)
 
 SSH into host; run new ubuntu container; install jdk; run htop
 
